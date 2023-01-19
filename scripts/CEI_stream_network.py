@@ -10,6 +10,8 @@ def CEI_extraction(DEM_input,
                    rivers_output,
                    text_output,
                    out_flow_dir,
+                   out_flow_acc,
+                   out_CEI,
                    out_stream_links,
                    out_stream_orders,
                    out_watersheds):
@@ -22,7 +24,6 @@ def CEI_extraction(DEM_input,
     cell_x = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEX").getOutput(0)
     cell_y = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEY").getOutput(0)
     cell_area = float(cell_x) * float(cell_y)  # cell area in sq. m
-
 
     # Calculate slope
     arcpy.AddMessage('Calculating slope')
@@ -50,11 +51,17 @@ def CEI_extraction(DEM_input,
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
     flow_accumulation = FlowAccumulation(flow_directions, overland_flow_m)
+    if out_flow_acc and out_flow_acc != "#":
+        arcpy.AddMessage('Saving flow directions')
+        flow_directions.save(out_flow_acc) 
     # flow_accumulation.save('FlowAcc')  # DEBUG
 
     # Calculate CEI
     arcpy.AddMessage('Calculating CEI')
     CEI = flow_accumulation * cell_area * slope_tangent
+    if out_CEI and out_CEI != "#":
+        arcpy.AddMessage('Saving flow directions')
+        flow_directions.save(out_CEI) 
     # CEI.save('CEI_debug')  # DEBUG
     
     # Reconstructing river network (raster)
@@ -81,7 +88,6 @@ def CEI_extraction(DEM_input,
     if out_stream_orders and out_stream_orders != '#':
         stream_orders.save(out_stream_orders)
     else:
-        arcpy.AddMessage('!!!!')
         out_stream_orders = 'stream_order'
         stream_orders.save(out_stream_orders)
     StreamToFeature(stream_orders, flow_directions, 'streams_output', "SIMPLIFY")
@@ -102,7 +108,6 @@ def CEI_extraction(DEM_input,
     # Extract values
     values = [i[0] for i in arcpy.da.SearchCursor(out_stream_orders, "Value")]
     arcpy.AddMessage("Strahler orders are: " + str(values))
-    
     # Dissolve streams by Strahler order
     arcpy.Dissolve_management('streams_output', 'streams_output_dissolve', 'strahler_order', "", "SINGLE_PART", "DISSOLVE_LINES")
     # Extract both ends from dissolved streams
