@@ -72,7 +72,7 @@ def CEI_extraction(DEM_input,
     stream_cells = BooleanOr(initials, stream_cells0)
     stream_cells.save('stream_cells')  # DEBUG
     
-    # Extract rivers
+    # Extract streams
     arcpy.AddMessage('Extract vector streams')
     stream_links = StreamLink(stream_cells, flow_directions)
     if out_stream_links and out_stream_links != '#':
@@ -81,17 +81,48 @@ def CEI_extraction(DEM_input,
     if out_stream_orders and out_stream_orders != '#':
         stream_orders.save(out_stream_orders)
     else:
+        arcpy.AddMessage('!!!!')
         out_stream_orders = 'stream_order'
         stream_orders.save(out_stream_orders)
-    StreamToFeature(stream_orders, flow_directions, rivers_output, "SIMPLIFY")
+    StreamToFeature(stream_orders, flow_directions, 'streams_output', "SIMPLIFY")
     # Changing field name to a meaningful string
-    arcpy.AlterField_management(rivers_output, 'grid_code', 'strahler_order', "Strahler order")
+    arcpy.AlterField_management('streams_output', 'grid_code', 'strahler_order', "Strahler order")
     arcpy.AddMessage('Delineating watersheds')
     outWatersheds_raster = Watershed(flow_directions, stream_links)
     # outWatersheds_raster.save(out_watersheds)  # DEBUG
     if out_watersheds and out_watersheds != '#':
         arcpy.RasterToPolygon_conversion(outWatersheds_raster, out_watersheds, "NO_SIMPLIFY", "", "MULTIPLE_OUTER_PART")
         #TODO: получать сведения о порядке соответствующего водотока из растра порядков водотоков
+
+    # Join streams with equal Strahler order
+    arcpy.AddMessage('Dissolving streams')
+    # Working with Stream order raster attribute table
+    # Build attribute table
+    arcpy.BuildRasterAttributeTable_management(out_stream_orders)
+    # Extract values
+    values = [i[0] for i in arcpy.da.SearchCursor(out_stream_orders, "Value")]
+    arcpy.AddMessage("Strahler orders are: " + str(values))
+    
+    # Dissolve streams by Strahler order
+    arcpy.Dissolve_management('streams_output', 'streams_output_dissolve', 'strahler_order', "", "SINGLE_PART", "DISSOLVE_LINES")
+    # Extract both ends from dissolved streams
+    arcpy.FeatureVerticesToPoints_management('streams_output_dissolve', 'streams_output_end', "BOTH_ENDS")
+    # Split 'V-shaped' dissolved streams at end points
+    fc_list = []
+    # Processing each order separately
+    for i in values:
+        # Selecting streams to split
+        expr = "strahler_order = " + str(i)
+        arcpy.MakeFeatureLayer_management('streams_output_dissolve', "streams_selection", expr)
+        # Selecting points to split. They have i+1 order
+        expr = "strahler_order = " + str(i + 1)
+        arcpy.MakeFeatureLayer_management('streams_output_end', "points_selection", expr)
+        # Split selected streams at selected points
+        rivers_temp = 'rivers_%s_order' % (i)  # Set dataset name
+        fc_list.append(rivers_temp)
+        arcpy.SplitLineAtPoint_management("streams_selection", "points_selection", rivers_temp)
+    # Merging streams
+    arcpy.Merge_management(fc_list, rivers_output)    
 
     # Calculate mean slope within streams
     # TODO: добавить вычисление средней высоты
@@ -119,14 +150,16 @@ def CEI_extraction(DEM_input,
     arcpy.AddMessage('Compute river length and number of segments')
     total_length = float(sum(row[0] for row in arcpy.da.SearchCursor(rivers_output, 'SHAPE@LENGTH')))
     total_count = arcpy.GetCount_management(rivers_output)
+    
     # Compute statistics by order
-    # Build attribute table
-    arcpy.BuildRasterAttributeTable_management(out_stream_orders)
-    # Extract values
-    values = [i[0] for i in arcpy.da.SearchCursor(out_stream_orders, "Value")]
-    if out_stream_orders and out_stream_orders != '#':
-        arcpy.Delete_management('stream_order')
-    arcpy.AddMessage("Strahler orders are: " + str(values))
+    
+    # THIS FRAGMENT WAS MOVED UP!
+    # Build attribute table  
+    # arcpy.BuildRasterAttributeTable_management(out_stream_orders)
+    # # Extract values
+    # values = [i[0] for i in arcpy.da.SearchCursor(out_stream_orders, "Value")]
+    # THIS FRAGMENT WAS MOVED UP! 
+    
     # Count number and total length for every order
     order_length = []
     order_count = []
@@ -135,6 +168,10 @@ def CEI_extraction(DEM_input,
         arcpy.MakeFeatureLayer_management(rivers_output, "rivers_selection", expr)
         order_length.append(float(sum(row[0] for row in arcpy.da.SearchCursor("rivers_selection", 'SHAPE@LENGTH'))))
         order_count.append(arcpy.GetCount_management("rivers_selection"))
+
+    # Delete Strahler order raster if not saved explicitly
+    if out_stream_orders and out_stream_orders != '#':
+        arcpy.Delete_management('stream_order')
 
     # Write parameters to the output text file
     arcpy.AddMessage('Save statistics to the text file')
