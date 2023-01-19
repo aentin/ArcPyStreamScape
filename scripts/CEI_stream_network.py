@@ -52,16 +52,16 @@ def CEI_extraction(DEM_input,
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
     flow_accumulation = FlowAccumulation(flow_directions, overland_flow_m)
     if out_flow_acc and out_flow_acc != "#":
-        arcpy.AddMessage('Saving flow directions')
-        flow_directions.save(out_flow_acc) 
+        arcpy.AddMessage('Saving flow accumulation')
+        flow_accumulation.save(out_flow_acc) 
     # flow_accumulation.save('FlowAcc')  # DEBUG
 
     # Calculate CEI
     arcpy.AddMessage('Calculating CEI')
     CEI = flow_accumulation * cell_area * slope_tangent
     if out_CEI and out_CEI != "#":
-        arcpy.AddMessage('Saving flow directions')
-        flow_directions.save(out_CEI) 
+        arcpy.AddMessage('Saving CEI raster')
+        CEI.save(out_CEI) 
     # CEI.save('CEI_debug')  # DEBUG
     
     # Reconstructing river network (raster)
