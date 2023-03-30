@@ -23,7 +23,7 @@ def CEI_extraction(DEM_input,
     arcpy.env.mask = DEM_input
     cell_x = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEX").getOutput(0)
     cell_y = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEY").getOutput(0)
-    cell_area = float(cell_x) * float(cell_y)  # cell area in sq. m
+    cell_area = float(cell_x.replace(',','.')) * float(cell_y.replace(',','.'))  # cell area in sq. m
 
     # Calculate slope
     arcpy.AddMessage('Calculating slope')
@@ -33,6 +33,7 @@ def CEI_extraction(DEM_input,
     # slope_tangent.save('slope')  # left for debugging purposes
     
     # Calculate P - ET
+    # TODO: Предусмотреть возможность задания разности сразу, без
     arcpy.AddMessage('Calculating P - ET')
     overland_flow = Minus(precipitation, evapotranspiration)  # for some unclear reason, simple '-' does not work there
     overland_flow_m = overland_flow * 0.001
@@ -47,7 +48,7 @@ def CEI_extraction(DEM_input,
     # Save output flow direction as optional parameter
     if out_flow_dir and out_flow_dir != "#":
         arcpy.AddMessage('Saving flow directions')
-        flow_directions.save(out_flow_dir)  
+        flow_directions.save(out_flow_dir)
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
     flow_accumulation = FlowAccumulation(flow_directions, overland_flow_m)
@@ -144,7 +145,7 @@ def CEI_extraction(DEM_input,
     # Join point attribute table to rivers, transfer attributes
     arcpy.AddField_management(rivers_output, 'Mean_slope', "FLOAT")
     arcpy.MakeFeatureLayer_management(rivers_output, 'rivers_layer')
-    arcpy.AddJoin_management('rivers_layer', "OBJECTID", 'rivers_startpoints_stat', "ORIG_FID")
+    arcpy.AddJoin_management('rivers_layer', "OBJECTID", 'rivers_startpoints_stat', "ORIG_FID") #TODO: не обязательно OBJECTID, может быть FID
     arcpy.CalculateField_management('rivers_layer', "Mean_slope", "!rivers_startpoints_stat.RASTERVALU!", "PYTHON_9.3")
     # Remove join
     arcpy.RemoveJoin_management ('rivers_layer')
