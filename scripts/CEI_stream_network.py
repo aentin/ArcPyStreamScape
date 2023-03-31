@@ -25,6 +25,12 @@ def CEI_extraction(DEM_input,
     cell_y = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEY").getOutput(0)
     cell_area = float(cell_x.replace(',','.')) * float(cell_y.replace(',','.'))  # cell area in sq. m
 
+    # Detect output rivers format
+    if (rivers_output[-4:] == '.shp'):
+        output_format = 'SHAPE'
+    else:
+        output_format = 'GDB'
+
     # Calculate slope
     arcpy.AddMessage('Calculating slope')
     slope_percent = Slope(DEM_input, "PERCENT_RISE")
@@ -33,7 +39,7 @@ def CEI_extraction(DEM_input,
     # slope_tangent.save('slope')  # left for debugging purposes
     
     # Calculate P - ET
-    # TODO: Предусмотреть возможность задания разности сразу, без
+    # TODO: Предусмотреть возможность задания разности сразу, без явного ввода осадков и испаряемости
     arcpy.AddMessage('Calculating P - ET')
     overland_flow = Minus(precipitation, evapotranspiration)  # for some unclear reason, simple '-' does not work there
     overland_flow_m = overland_flow * 0.001
@@ -69,7 +75,7 @@ def CEI_extraction(DEM_input,
     # Extracting initial cells
     arcpy.AddMessage('Extracting initial cells')
     initials = Con(CEI, '1', '0', "Value > %s" % (CEI_threshold))
-    initials.save('Initials')  # DEBUG
+    # initials.save('Initials')  # DEBUG
     # Calculating flow accumulation again to reconstuct connected stream network
     arcpy.AddMessage('Reconstructing stream network')
     flow_accumulation_streams = FlowAccumulation(flow_directions, initials)
@@ -78,7 +84,7 @@ def CEI_extraction(DEM_input,
     stream_cells0 = Con(flow_accumulation_streams, '1', '0', "Value > 0")
     # Combining stream cells and initials
     stream_cells = BooleanOr(initials, stream_cells0)
-    stream_cells.save('stream_cells')  # DEBUG
+    # stream_cells.save('stream_cells')  # DEBUG
     
     # Extract streams
     arcpy.AddMessage('Extract vector streams')
@@ -128,7 +134,11 @@ def CEI_extraction(DEM_input,
         fc_list.append(rivers_temp)
         arcpy.SplitLineAtPoint_management("streams_selection", "points_selection", rivers_temp)
     # Merging streams
-    arcpy.Merge_management(fc_list, rivers_output)    
+    arcpy.Merge_management(fc_list, rivers_output)
+    # Deleting temporary feature classes
+    arcpy.Delete_management('streams_output_dissolve')
+    for fc in fc_list:
+        arcpy.Delete_management(fc)
 
     # Calculate mean slope within streams
     # TODO: добавить вычисление средней высоты
@@ -145,10 +155,14 @@ def CEI_extraction(DEM_input,
     # Join point attribute table to rivers, transfer attributes
     arcpy.AddField_management(rivers_output, 'Mean_slope', "FLOAT")
     arcpy.MakeFeatureLayer_management(rivers_output, 'rivers_layer')
-    arcpy.AddJoin_management('rivers_layer', "OBJECTID", 'rivers_startpoints_stat', "ORIG_FID") #TODO: не обязательно OBJECTID, может быть FID
+    if output_format == 'SHAPE':
+        target_field = 'FID'
+    else:
+        target_field = 'OBJECTID'
+    arcpy.AddJoin_management('rivers_layer', target_field, 'rivers_startpoints_stat', "ORIG_FID")
     arcpy.CalculateField_management('rivers_layer', "Mean_slope", "!rivers_startpoints_stat.RASTERVALU!", "PYTHON_9.3")
     # Remove join
-    arcpy.RemoveJoin_management ('rivers_layer')
+    arcpy.RemoveJoin_management('rivers_layer')
 
     # Compute number of streams and total length
     # Computation is performed over simplified streams to reduce error
@@ -157,20 +171,15 @@ def CEI_extraction(DEM_input,
     total_length = float(sum(row[0] for row in arcpy.da.SearchCursor(rivers_output, 'SHAPE@LENGTH')))
     total_count = arcpy.GetCount_management(rivers_output)
     
-    # Compute statistics by order
-    
-    # THIS FRAGMENT WAS MOVED UP!
-    # Build attribute table  
-    # arcpy.BuildRasterAttributeTable_management(out_stream_orders)
-    # # Extract values
-    # values = [i[0] for i in arcpy.da.SearchCursor(out_stream_orders, "Value")]
-    # THIS FRAGMENT WAS MOVED UP! 
-    
+    # Compute statistics by order   
     # Count number and total length for every order
     order_length = []
     order_count = []
     for i in values:
-        expr = "strahler_order = " + str(i)
+        if output_format == 'SHAPE':
+            expr = "strahler_o = " + str(i)
+        else:
+            expr = "strahler_order = " + str(i)
         arcpy.MakeFeatureLayer_management(rivers_output, "rivers_selection", expr)
         order_length.append(float(sum(row[0] for row in arcpy.da.SearchCursor("rivers_selection", 'SHAPE@LENGTH'))))
         order_count.append(arcpy.GetCount_management("rivers_selection"))
