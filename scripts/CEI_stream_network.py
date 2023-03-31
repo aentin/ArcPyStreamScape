@@ -1,6 +1,4 @@
 import arcpy
-from arcpy import env
-from arcpy.sa import *
 
 
 def CEI_extraction(DEM_input,
@@ -33,31 +31,31 @@ def CEI_extraction(DEM_input,
 
     # Calculate slope
     arcpy.AddMessage('Calculating slope')
-    slope_percent = Slope(DEM_input, "PERCENT_RISE")
-    slope_tangent = Times(slope_percent, 0.01)
+    slope_percent = arcpy.sa.Slope(DEM_input, "PERCENT_RISE")
+    slope_tangent = arcpy.sa.Times(slope_percent, 0.01)
     arcpy.Delete_management('slope_percent')
     # slope_tangent.save('slope')  # left for debugging purposes
     
     # Calculate P - ET
     # TODO: Предусмотреть возможность задания разности сразу, без явного ввода осадков и испаряемости
     arcpy.AddMessage('Calculating P - ET')
-    overland_flow = Minus(precipitation, evapotranspiration)  # for some unclear reason, simple '-' does not work there
+    overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)  # for some unclear reason, simple '-' does not work there
     overland_flow_m = overland_flow * 0.001
     
     # DEM Hydro-processing
     # Fill in sinks
     arcpy.AddMessage('Fill in sinks')
-    DEM_fill = Fill(DEM_input)
+    DEM_fill = arcpy.sa.Fill(DEM_input)
     # Calculate flow directions
     arcpy.AddMessage('Calculating flow directions')
-    flow_directions = FlowDirection(DEM_fill, "NORMAL", 'slope_percent')
+    flow_directions = arcpy.sa.FlowDirection(DEM_fill, "NORMAL", 'slope_percent')
     # Save output flow direction as optional parameter
     if out_flow_dir and out_flow_dir != "#":
         arcpy.AddMessage('Saving flow directions')
         flow_directions.save(out_flow_dir)
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
-    flow_accumulation = FlowAccumulation(flow_directions, overland_flow_m)
+    flow_accumulation = arcpy.sa.FlowAccumulation(flow_directions, overland_flow_m)
     if out_flow_acc and out_flow_acc != "#":
         arcpy.AddMessage('Saving flow accumulation')
         flow_accumulation.save(out_flow_acc) 
@@ -74,34 +72,34 @@ def CEI_extraction(DEM_input,
     # Reconstructing river network (raster)
     # Extracting initial cells
     arcpy.AddMessage('Extracting initial cells')
-    initials = Con(CEI, '1', '0', "Value > %s" % (CEI_threshold))
+    initials = arcpy.sa.Con(CEI, '1', '0', "Value > %s" % (CEI_threshold))
     # initials.save('Initials')  # DEBUG
     # Calculating flow accumulation again to reconstuct connected stream network
     arcpy.AddMessage('Reconstructing stream network')
-    flow_accumulation_streams = FlowAccumulation(flow_directions, initials)
+    flow_accumulation_streams = arcpy.sa.FlowAccumulation(flow_directions, initials)
     # Exctacting stream cells
     arcpy.AddMessage('Extracting stream network')
-    stream_cells0 = Con(flow_accumulation_streams, '1', '0', "Value > 0")
+    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams, '1', '0', "Value > 0")
     # Combining stream cells and initials
-    stream_cells = BooleanOr(initials, stream_cells0)
+    stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
     # stream_cells.save('stream_cells')  # DEBUG
     
     # Extract streams
     arcpy.AddMessage('Extract vector streams')
-    stream_links = StreamLink(stream_cells, flow_directions)
+    stream_links = arcpy.sa.StreamLink(stream_cells, flow_directions)
     if out_stream_links and out_stream_links != '#':
         stream_links.save(out_stream_links)
-    stream_orders = StreamOrder(stream_cells, flow_directions, "STRAHLER")
+    stream_orders = arcpy.sa.StreamOrder(stream_cells, flow_directions, "STRAHLER")
     if out_stream_orders and out_stream_orders != '#':
         stream_orders.save(out_stream_orders)
     else:
         out_stream_orders = 'stream_order'
         stream_orders.save(out_stream_orders)
-    StreamToFeature(stream_orders, flow_directions, 'streams_output', "SIMPLIFY")
+    arcpy.sa.StreamToFeature(stream_orders, flow_directions, 'streams_output', "SIMPLIFY")
     # Changing field name to a meaningful string
     arcpy.AlterField_management('streams_output', 'grid_code', 'strahler_order', "Strahler order")
     arcpy.AddMessage('Delineating watersheds')
-    outWatersheds_raster = Watershed(flow_directions, stream_links)
+    outWatersheds_raster = arcpy.sa.Watershed(flow_directions, stream_links)
     # outWatersheds_raster.save(out_watersheds)  # DEBUG
     if out_watersheds and out_watersheds != '#':
         arcpy.RasterToPolygon_conversion(outWatersheds_raster, out_watersheds, "NO_SIMPLIFY", "", "MULTIPLE_OUTER_PART")
@@ -137,6 +135,7 @@ def CEI_extraction(DEM_input,
     arcpy.Merge_management(fc_list, rivers_output)
     # Deleting temporary feature classes
     arcpy.Delete_management('streams_output_dissolve')
+    arcpy.Delete_management('streams_output_end')
     for fc in fc_list:
         arcpy.Delete_management(fc)
 
@@ -144,13 +143,13 @@ def CEI_extraction(DEM_input,
     # TODO: добавить вычисление средней высоты
     arcpy.AddMessage('Calculate mean slope')
     # Extract drop values by mask
-    drop_raster_streams = ExtractByMask('slope_percent', stream_orders)
+    drop_raster_streams = arcpy.sa.ExtractByMask('slope_percent', stream_orders)
     # Perform zonal statistics; result is saved as raster
-    drop_raster_mean = ZonalStatistics(outWatersheds_raster, 'Value', drop_raster_streams, "MEAN")
+    drop_raster_mean = arcpy.sa.ZonalStatistics(outWatersheds_raster, 'Value', drop_raster_streams, "MEAN")
     # Extract rivers startpoints
     arcpy.FeatureVerticesToPoints_management(rivers_output, 'rivers_startpoints', "START")
     # Extract zonal statistics raster values to rivers' startpoints
-    ExtractValuesToPoints('rivers_startpoints', drop_raster_mean, 'rivers_startpoints_stat')
+    arcpy.sa.ExtractValuesToPoints('rivers_startpoints', drop_raster_mean, 'rivers_startpoints_stat')
     arcpy.Delete_management('rivers_startpoints')
     # Join point attribute table to rivers, transfer attributes
     arcpy.AddField_management(rivers_output, 'Mean_slope', "FLOAT")
@@ -163,6 +162,8 @@ def CEI_extraction(DEM_input,
     arcpy.CalculateField_management('rivers_layer', "Mean_slope", "!rivers_startpoints_stat.RASTERVALU!", "PYTHON_9.3")
     # Remove join
     arcpy.RemoveJoin_management('rivers_layer')
+    # Delete temporary file
+    arcpy.Delete_management('rivers_startpoints_stat')
 
     # Compute number of streams and total length
     # Computation is performed over simplified streams to reduce error
