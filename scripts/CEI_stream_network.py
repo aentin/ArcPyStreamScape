@@ -87,6 +87,9 @@ def CEI_extraction(DEM_input,
     # Extract streams
     arcpy.AddMessage('Extract vector streams')
     stream_links = arcpy.sa.StreamLink(stream_cells, flow_directions)
+
+    #TODO: реализовать фильтрацию водотодов 1 порядка по длине
+
     if out_stream_links and out_stream_links != '#':
         stream_links.save(out_stream_links)
     stream_orders = arcpy.sa.StreamOrder(stream_cells, flow_directions, "STRAHLER")
@@ -119,6 +122,8 @@ def CEI_extraction(DEM_input,
     arcpy.FeatureVerticesToPoints_management('streams_output_dissolve', 'streams_output_end', "BOTH_ENDS")
     # Split 'V-shaped' dissolved streams at end points
     fc_list = []
+    # Set radius for splitting
+    split_radius = '1 Meters'
     # Processing each order separately
     for i in values:
         # Selecting streams to split
@@ -130,7 +135,7 @@ def CEI_extraction(DEM_input,
         # Split selected streams at selected points
         rivers_temp = 'rivers_%s_order' % (i)  # Set dataset name
         fc_list.append(rivers_temp)
-        arcpy.SplitLineAtPoint_management("streams_selection", "points_selection", rivers_temp)
+        arcpy.SplitLineAtPoint_management("streams_selection", "points_selection", rivers_temp, split_radius)
     # Merging streams
     arcpy.Merge_management(fc_list, rivers_output)
     # Deleting temporary feature classes
