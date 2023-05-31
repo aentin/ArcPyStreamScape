@@ -54,17 +54,6 @@ def CEI_extraction(DEM_input,
         arcpy.AddMessage('Saving flow directions')
         flow_directions.save(out_flow_dir)
     
-    #TODO: реализовать разные способы расчёта речной сети (функции инициации)
-    # CATCHMENT_AREA
-    # SLOPE_POWER_INDEX
-    # SHEAR_STRESS_INDEX
-    # CLIMATIC_RUNOFF
-    # COMPLEX_ENERGY_INDEX
-    # SHEAR_STRESS_ENERGY
-    # MEAN_EROSION_CUT
-    # DRAINAGE_NETWORK_STRAHLER_ORDER
-
-
     # Reconstructing river network
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
