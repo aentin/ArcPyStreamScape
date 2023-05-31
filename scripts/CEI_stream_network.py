@@ -53,6 +53,8 @@ def CEI_extraction(DEM_input,
     if out_flow_dir and out_flow_dir != "#":
         arcpy.AddMessage('Saving flow directions')
         flow_directions.save(out_flow_dir)
+    
+    # Reconstructing river network
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')
     flow_accumulation = arcpy.sa.FlowAccumulation(flow_directions, overland_flow_m)
@@ -106,7 +108,6 @@ def CEI_extraction(DEM_input,
     # outWatersheds_raster.save(out_watersheds)  # DEBUG
     if out_watersheds and out_watersheds != '#':
         arcpy.RasterToPolygon_conversion(outWatersheds_raster, out_watersheds, "NO_SIMPLIFY", "", "MULTIPLE_OUTER_PART")
-        #TODO: получать сведения о порядке соответствующего водотока из растра порядков водотоков
 
     # Join streams with equal Strahler order
     arcpy.AddMessage('Dissolving streams')
