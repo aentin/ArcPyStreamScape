@@ -1,16 +1,6 @@
 import arcpy
 
 
-#TODO: реализовать разные способы расчёта речной сети (функции инициации)
-# CATCHMENT_AREA  #DONE
-# SLOPE_POWER_INDEX  #DONE
-# SHEAR_STRESS_INDEX  #DONE
-# CLIMATIC_RUNOFF  #DONE
-# COMPLEX_ENERGY_INDEX  #DONE
-# SHEAR_STRESS_ENERGY  #DONE
-# MEAN_EROSION_CUT
-# DRAINAGE_NETWORK_STRAHLER_ORDER  #DONE
-
 def extract_streams_flowacc(flow_directions,
                             initiation_function_type,
                             overland_flow_m,
@@ -137,16 +127,20 @@ def exclude_small_streams(stream_cells, flow_directions, min_length_pixels):
     stream_links = arcpy.sa.StreamLink(stream_cells, flow_directions)
     stream_orders = arcpy.sa.StreamOrder(stream_cells, flow_directions, "STRAHLER")
     # Extract stream links longer than min_length_pixels
-    expression = "Count >" + min_length_pixels
+    expression = "Count > " + min_length_pixels
     stream_links_selection = arcpy.sa.ExtractByAttributes(stream_links, expression)
-    stream_links_selection.save('stream_links_selection')
+    # stream_links_selection.save('stream_links_selection')
     # Extract stream orders higher than 1
-    stream_order_selection = arcpy.sa.ExtractByAttributes(stream_orders, "Value > 1")
-    stream_order_selection.save('stream_order_selection')
-    # Combine two extractions
-    arcpy.MosaicToNewRaster_management(input_rasters="stream_links_selection;stream_order_selection", output_location="D:/PROJECTS/IWP/2023-05-10_TEST_NEW_INSTRUMENT/test.gdb", raster_dataset_name_with_extension="stream_links_filtered", coordinate_system_for_the_raster="", pixel_type="32_BIT_SIGNED", cellsize="", number_of_bands="1", mosaic_method="LAST", mosaic_colormap_mode="FIRST")
-
-
+    stream_order_selection = arcpy.sa.ExtractByAttributes(stream_orders, "Value >= 2")
+    # stream_order_selection.save('stream_order_selection')
+    # Reclass selections to avoid NoData values. "Data" values are set to 0
+    stream_links_selection_isnull = arcpy.sa.IsNull(stream_links_selection)
+    stream_order_selection_isnull = arcpy.sa.IsNull(stream_order_selection)
+    # Revert reclassified rasters to set data cells to 1
+    stream_links_selection_notnull = arcpy.sa.BooleanNot(stream_links_selection_isnull)
+    stream_order_selection_notnull = arcpy.sa.BooleanNot(stream_order_selection_isnull)
+    # Combine obtained rasters
+    stream_cells = arcpy.sa.BooleanOr(stream_links_selection_notnull, stream_order_selection_notnull)
 
     return stream_cells
 
@@ -155,6 +149,7 @@ def CEI_extraction(DEM_input,
                    evapotranspiration,
                    initiation_function_type,
                    initiation_threshold,
+                   min_segment_length,
                    rivers_output,
                    text_output,
                    out_flow_dir,
@@ -226,7 +221,9 @@ def CEI_extraction(DEM_input,
     else:
         arcpy.AddMessage('Wrong initiation function type')
     
-    #TODO: реализовать фильтрацию водотодов 1 порядка по длине
+    # Wipe short 1st order cells
+    arcpy.AddMessage('Wipe short 1st order streams')
+    stream_cells = exclude_small_streams(stream_cells, flow_directions, min_segment_length)
 
     # Extract streams
     arcpy.AddMessage('Extract vector streams')
