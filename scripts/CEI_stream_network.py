@@ -35,13 +35,7 @@ def CEI_extraction(DEM_input,
     slope_tangent = arcpy.sa.Times(slope_percent, 0.01)
     arcpy.Delete_management('slope_percent')
     # slope_tangent.save('slope')  # left for debugging purposes
-    
-    # Calculate P - ET
-    # TODO: Предусмотреть возможность задания разности сразу, без явного ввода осадков и испаряемости
-    arcpy.AddMessage('Calculating P - ET')
-    overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)  # for some unclear reason, simple '-' does not work there
-    overland_flow_m = overland_flow * 0.001
-    
+        
     # DEM Hydro-processing
     # Fill in sinks
     arcpy.AddMessage('Fill in sinks')
@@ -54,6 +48,17 @@ def CEI_extraction(DEM_input,
         arcpy.AddMessage('Saving flow directions')
         flow_directions.save(out_flow_dir)
     
+    # Calculate P - ET
+    arcpy.AddMessage('Calculating P - ET')
+    # If evapotranspiration is set explicitly, simply find the difference
+    # If not, it is set to 0
+    if evapotranspiration and evapotranspiration != "#":
+        overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)
+    else:
+        evapotranspiration = arcpy.sa.Con(flow_directions, '0', '', 'Value IS NOT NULL')
+        overland_flow = precipitation - evapotranspiration
+    overland_flow_m = overland_flow * 0.001
+
     # Reconstructing river network
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation with overland flow')

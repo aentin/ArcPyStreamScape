@@ -200,7 +200,6 @@ def CEI_extraction(DEM_input,
     if evapotranspiration and evapotranspiration != "#":
         overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)
     else:
-        arcpy.AddMessage('!!!')
         evapotranspiration = arcpy.sa.Con(flow_directions, '0', '', 'Value IS NOT NULL')
         overland_flow = precipitation - evapotranspiration
     overland_flow_m = overland_flow * 0.001
