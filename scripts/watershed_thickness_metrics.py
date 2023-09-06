@@ -15,8 +15,8 @@ def Basin_parameters(DEM,
     
     # # Prepare environments
     arcpy.env.overwriteOutput = True
-    cell_x = float(arcpy.GetRasterProperties_management(DEM, "CELLSIZEX").getOutput(0))
-    cell_y = float(arcpy.GetRasterProperties_management(DEM, "CELLSIZEY").getOutput(0))
+    cell_x = float(arcpy.GetRasterProperties_management(DEM, "CELLSIZEX").getOutput(0).replace(',','.'))
+    cell_y = float(arcpy.GetRasterProperties_management(DEM, "CELLSIZEY").getOutput(0).replace(',','.'))
     cell_area = cell_x * cell_y  # cell area in sq. m
     
     # Preprocessing
@@ -63,9 +63,11 @@ def Basin_parameters(DEM,
     # 1: Extrema thickness
     arcpy.AddMessage('1: Extrema thickness...')
     # Assign elevation range to the new field
+    arcpy.AddField_management(watersheds_output, "deltaH_extr", "DOUBLE")
     expression = '!stat_table_watersheds.range!'
     arcpy.CalculateField_management('watersheds_layer', "deltaH_extr", expression, "PYTHON_9.3")
     # Compute 'extrema volume'
+    arcpy.AddField_management(watersheds_output, "V_extr", "DOUBLE")
     expression = '!stat_table_watersheds.range! * !%s.Shape_Area!' % (watersheds_output.split('\\')[-1])
     arcpy.CalculateField_management('watersheds_layer', "V_extr", expression, "PYTHON_9.3")
     # Calculate final 'extrema thickness'
