@@ -25,9 +25,11 @@ def Basin_parameters(DEM,
     DEM_fill = Fill(DEM)
     # Calculate flow directions (if not in input)
     if not (flow_directions and flow_directions != "#"):
-        flow_directions = FlowDirection(DEM_fill, "NORMAL", 'slope_percent')
+        flow_directions = FlowDirection(DEM_fill, "NORMAL", 'flowdir')
     # Calculate flow accumulation
-    flow_accumulation = FlowAccumulation(flow_directions)
+    flow_accumulation_raw = FlowAccumulation(flow_directions)
+    flow_accumulation = flow_accumulation_raw + 1.0
+    # flow_accumulation.save('flow_accumulation')
     # Check if watersheds are given as input data
     if watersheds and watersheds != '#':  # if yes, create a copy of input data
         arcpy.Copy_management(watersheds, watersheds_output)  # Note that 'watersheds' are feature class, not feature layer
@@ -49,7 +51,6 @@ def Basin_parameters(DEM,
     with arcpy.da.SearchCursor(watersheds_output, "Shape_Area") as cursor:
         for row in cursor:
             sum_area = sum_area + row[0]
-    arcpy.AddMessage('Total shape area is: ' + str(sum_area))  # DEBUG
 
     # Perform zonal statistics as table
     ZonalStatisticsAsTable(watersheds_output, 'OBJECTID', DEM, 'stat_table_watersheds')
@@ -79,7 +80,7 @@ def Basin_parameters(DEM,
     # arcpy.AddMessage('dH_extr is: ' + str(dH_extr))  # DEBUG
 
     # 2: mean thickness
-    arcpy.AddMessage('2: mean thickness...')
+    arcpy.AddMessage('2: Mean thickness...')
     # Extract stream elevations
     DEM_streams = ExtractByMask(DEM, streams)
     # Calculate zonal statistics for stream elevations
@@ -102,7 +103,7 @@ def Basin_parameters(DEM,
                 continue
             sum_volume_mean = sum_volume_mean + row[0]
     dH_mean = sum_volume_mean / sum_area
-    arcpy.AddMessage('dH_mean is: ' + str(dH_mean))  # DEBUG
+    # arcpy.AddMessage('dH_mean is: ' + str(dH_mean))  # DEBUG
 
     # 3: watershed thickness
     arcpy.AddMessage('3: watershed thickness...')
@@ -112,10 +113,8 @@ def Basin_parameters(DEM,
     arcpy.Buffer_analysis(watersheds_output, 'watersheds_buffer', buffer_distance)
     # Erase watershed polygons with buffer
     arcpy.Erase_analysis(watersheds_output, 'watersheds_buffer', 'watersheds_mask')
-    # Select DEM cells with zero flow accumulation
-    DEM_watersheds_lines = SetNull(flow_accumulation, DEM, "VALUE > 0")  #TODO: убрать это условие
     # Calculate zonal statistics for watershed lines
-    ZonalStatisticsAsTable('watersheds_mask', 'OBJECTID', DEM_watersheds_lines, 'stat_table_watershed_lines')
+    ZonalStatisticsAsTable('watersheds_mask', 'OBJECTID', DEM, 'stat_table_watershed_lines')
     # Join zonal statistics with output watersheds
     arcpy.AddJoin_management('watersheds_layer', "OBJECTID", 'stat_table_watershed_lines', "OBJECTID")
     # Compute 'watershed elevation difference'
@@ -134,17 +133,20 @@ def Basin_parameters(DEM,
                 continue
             sum_volume_watershed = sum_volume_watershed + row[0]
     dH_watershed = sum_volume_watershed / sum_area
-    arcpy.AddMessage('dH_watershed is: ' + str(dH_watershed))  # DEBUG
+    # arcpy.AddMessage('dH_watershed is: ' + str(dH_watershed))  # DEBUG
 
-    # Mean elevation, mean erosion cut, accumulated volume
+    # Mean elevation, mean erosion cut
     arcpy.AddMessage('4: continual parameters...')
-    # catchment_area = flow_accumulation * cell_area
-    sum_elevation_downstream = FlowAccumulation(flow_directions, DEM_fill)
+    sum_elevation_downstream_raw = FlowAccumulation(flow_directions, DEM_fill)
+    sum_elevation_downstream = sum_elevation_downstream_raw + DEM_fill
     mean_watershed_elevation_raster = sum_elevation_downstream / flow_accumulation
     mean_watershed_elevation_raster.save(mean_watershed_elevation)  # средняя высота водосбора
     mean_erosion_cut_raster = mean_watershed_elevation_raster - DEM_fill
     mean_erosion_cut_raster.save(mean_erosion_cut)
-    # TODO: сделать вывод: максимум вреза, величина вреза в замыкающем створе
+    # Compute statistics
+    max_erosion_cut_value = arcpy.management.GetRasterProperties(mean_erosion_cut_raster, "MAXIMUM")
+    # TODO: сделать вывод: максимум вреза 
+    # TODO: сделать вывод: величина вреза в замыкающем створе (сложно!)
     
     # Saving stats
     arcpy.AddMessage('Save statistics to the text file')
@@ -155,6 +157,16 @@ def Basin_parameters(DEM,
         out.write('dH by mean: ' + str(dH_mean) + ' m\n')
         out.write('Total volume by watershed lines: ' + str(sum_volume_watershed) + ' m^3\n')
         out.write('dH by watershed lines: ' + str(dH_watershed) + ' m\n')
+        out.write('Max erosion cut value: ' + str(max_erosion_cut_value) + ' m')
+
+    # Delete intermediate data
+    if arcpy.Exists('flowdir'): arcpy.Delete_management('flowdir')
+    if arcpy.Exists('flow_accumulation'): arcpy.Delete_management('flow_accumulation')
+    if arcpy.Exists('stat_table_streams'): arcpy.Delete_management('stat_table_streams')
+    if arcpy.Exists('stat_table_watershed_lines'): arcpy.Delete_management('stat_table_watershed_lines')
+    if arcpy.Exists('stat_table_watersheds'): arcpy.Delete_management('stat_table_watersheds')
+    if arcpy.Exists('watersheds_buffer'): arcpy.Delete_management('watersheds_buffer')
+    if arcpy.Exists('watersheds_mask'): arcpy.Delete_management('watersheds_mask')
 
 
 if __name__ == '__main__':
