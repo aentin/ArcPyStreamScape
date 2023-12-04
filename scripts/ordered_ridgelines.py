@@ -12,6 +12,7 @@ def Watershed_extraction(flow_directions,
     arcpy.AddMessage('Compute stream order')
     stream_links = StreamLink(rivers_input, flow_directions)
     stream_order = StreamOrder(rivers_input, flow_directions, "STRAHLER")
+    stream_links.save('stream_links')
     stream_order.save('stream_order')  # This is not for debug. 
     # The stream_order raster is needed to extract unique stream order values
 
@@ -29,9 +30,11 @@ def Watershed_extraction(flow_directions,
         arcpy.AddMessage('Order processing: ' + str(i))
         streams_select = Con(stream_order == i, stream_links, '')  # Select current order (raster)
         watersheds_raster = Watershed(flow_directions, streams_select)  # Create watershed from streams_select
+        watersheds_raster.save('watersheds_i_st_order')  # Save raster watershed
         watersheds_vector = 'Watershed_%s' % (i)  # Set dataset name
         fc_list.append(watersheds_vector)  # Append name to the list
         arcpy.RasterToPolygon_conversion(watersheds_raster, watersheds_vector, "NO_SIMPLIFY")  # Convert raster waterhsed to vector
+        arcpy.Delete_management('watersheds_i_st_order')  # Delete raster watershed
         field_name = 'Strahler_order' + str(i)  # Create field name for current Strahler order
         field_list.append(field_name)  # Append the name to the field names list
         arcpy.AddField_management(watersheds_vector, field_name, "SHORT")  # Add field to store Strahler order
@@ -41,18 +44,24 @@ def Watershed_extraction(flow_directions,
             row.setValue(field_name, i)
             cursor.updateRow(row)
 
+    arcpy.Delete_management('stream_links')
+    arcpy.Delete_management('stream_order')
+
     # Converting polygons to lines
     arcpy.AddMessage('Converting polygons to lines')
     # Very nice trick here! ArcGIS allows to use multiple input polygons in Feature to Line!
     arcpy.FeatureToLine_management(fc_list, watersheds_output)  
+    # Delete polygons of i'st order watersheds
+    for fc in fc_list:
+        arcpy.Delete_management(fc)
     
     # Removing unwanted fields
     field_names = [f.name for f in arcpy.ListFields(watersheds_output)]  # Generating feild names list
     field_list_save = field_list[:]  # Duplicating variable field_list to 'unlink' them first
-    field_list_save.extend(['Shape', 'OBJECTID', 'ID', 'FID', 'Shape_Length'])  # Add system fields to the list to avoid deleting them
+    field_list_save.extend(['Shape', 'OBJECTID', 'FID', 'Shape_Length', 'Shape_Leng'])  # Add system fields to the list to avoid deleting them
     field_list_remove = [field_name for field_name in field_names if field_name not in field_list_save]  # Create list of fields to remove
     arcpy.DeleteField_management(watersheds_output, field_list_remove)  # Remove fields
-    arcpy.Copy_management(watersheds_output, 'watersheds_line_withidentical')
+    # arcpy.Copy_management(watersheds_output, 'watersheds_line_withidentical')
 
     # Delete features with identical shape and Strahler orders (save only one)
     field_list_remove_duplicate = field_list[:]  # Duplicating variable field_list to 'unlink' them first
