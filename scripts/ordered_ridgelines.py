@@ -49,7 +49,7 @@ def Watershed_extraction(flow_directions,
     # Removing unwanted fields
     field_names = [f.name for f in arcpy.ListFields(watersheds_output)]  # Generating feild names list
     field_list_save = field_list[:]  # Duplicating variable field_list to 'unlink' them first
-    field_list_save.extend(['Shape', 'OBJECTID', 'Shape_Length'])  # Add system fields to the list to avoid deleting them
+    field_list_save.extend(['Shape', 'OBJECTID', 'ID', 'FID', 'Shape_Length'])  # Add system fields to the list to avoid deleting them
     field_list_remove = [field_name for field_name in field_names if field_name not in field_list_save]  # Create list of fields to remove
     arcpy.DeleteField_management(watersheds_output, field_list_remove)  # Remove fields
     arcpy.Copy_management(watersheds_output, 'watersheds_line_withidentical')
