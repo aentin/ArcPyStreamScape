@@ -3,13 +3,26 @@ import arcpy
 
 def extract_streams_flowacc(flow_directions,
                             initiation_function_type,
-                            overland_flow_m,
+                            precipitation,
+                            evapotranspiration,
                             slope_tangent,
                             cell_area,
                             out_flow_acc,
                             out_initiation_raster,
                             initiation_threshold):
-    
+
+    # Calculate P - ET
+    if initiation_function_type in ('CLIMATIC_RUNOFF', 'COMPLEX_ENERGY_INDEX', 'SHEAR_STRESS_ENERGY'):
+        arcpy.AddMessage('Calculating P - ET')
+        # If evapotranspiration is set explicitly, simply find the difference
+        # If not, it is set to 0
+        if evapotranspiration and evapotranspiration != "#":
+            overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)
+        else:
+            evapotranspiration = arcpy.sa.Con(flow_directions, '0', '', 'Value IS NOT NULL')
+            overland_flow = precipitation - evapotranspiration
+        overland_flow_m = overland_flow * 0.001
+
     # Calculate flow accumulation
     arcpy.AddMessage('Calculating flow accumulation')
     if initiation_function_type in ('CATCHMENT_AREA', 'SLOPE_POWER_INDEX', 'SHEAR_STRESS_INDEX'):
@@ -193,23 +206,13 @@ def CEI_extraction(DEM_input,
         arcpy.AddMessage('Saving flow directions')
         flow_directions.save(out_flow_dir)
     
-    # Calculate P - ET
-    arcpy.AddMessage('Calculating P - ET')
-    # If evapotranspiration is set explicitly, simply find the difference
-    # If not, it is set to 0
-    if evapotranspiration and evapotranspiration != "#":
-        overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)
-    else:
-        evapotranspiration = arcpy.sa.Con(flow_directions, '0', '', 'Value IS NOT NULL')
-        overland_flow = precipitation - evapotranspiration
-    overland_flow_m = overland_flow * 0.001
-
     # Reconstructing river network
     if initiation_function_type in ('CATCHMENT_AREA', 'SLOPE_POWER_INDEX', 'SHEAR_STRESS_INDEX',
                                     'CLIMATIC_RUNOFF', 'COMPLEX_ENERGY_INDEX', 'SHEAR_STRESS_ENERGY'):
         stream_cells = extract_streams_flowacc(flow_directions,
                                                initiation_function_type,
-                                               overland_flow_m,
+                                               precipitation,
+                                               evapotranspiration,
                                                slope_tangent,
                                                cell_area,
                                                out_flow_acc,
