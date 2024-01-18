@@ -138,7 +138,9 @@ def exclude_small_streams(stream_cells, flow_directions, min_length_pixels):
     
     # Derive stream links and stream orders 
     stream_links = arcpy.sa.StreamLink(stream_cells, flow_directions)
+    arcpy.BuildRasterAttributeTable_management(stream_links, "Overwrite")
     stream_orders = arcpy.sa.StreamOrder(stream_cells, flow_directions, "STRAHLER")
+    arcpy.BuildRasterAttributeTable_management(stream_orders, "Overwrite")
     # Extract stream links longer than min_length_pixels
     expression = "Count > " + min_length_pixels
     stream_links_selection = arcpy.sa.ExtractByAttributes(stream_links, expression)
@@ -284,6 +286,7 @@ def CEI_extraction(DEM_input,
     # Merging streams
     arcpy.Merge_management(fc_list, rivers_output)
     # Deleting temporary feature classes
+    arcpy.Delete_management('streams_output')
     arcpy.Delete_management('streams_output_dissolve')
     arcpy.Delete_management('streams_output_end')
     for fc in fc_list:
@@ -312,8 +315,9 @@ def CEI_extraction(DEM_input,
     arcpy.CalculateField_management('rivers_layer', "Mean_slope", "!rivers_startpoints_stat.RASTERVALU!", "PYTHON_9.3")
     # Remove join
     arcpy.RemoveJoin_management('rivers_layer')
-    # Delete temporary file
+    # Delete temporary files
     arcpy.Delete_management('rivers_startpoints_stat')
+    arcpy.Delete_management('slope_percent')
 
     # Compute number of streams and total length
     # Computation is performed over simplified streams to reduce error
