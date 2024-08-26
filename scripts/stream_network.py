@@ -120,6 +120,82 @@ def extract_streams_erosion_cut(flow_directions,
 
     return stream_cells
 
+def extract_streams_cei_to_mean_erosion_cut(flow_directions,
+                                            DEM,
+                                            precipitation,
+                                            evapotranspiration,
+                                            slope_tangent,
+                                            cell_area,
+                                            initiation_threshold,
+                                            out_flow_acc,
+                                            out_initiation_raster):
+    
+    # Calculating CEI
+    # Calculating overland flow
+    arcpy.AddMessage('Calculating P - ET')
+    # If evapotranspiration is set explicitly, simply find the difference
+    # If not, it is set to 0
+    if evapotranspiration and evapotranspiration != "#":
+        overland_flow = arcpy.sa.Minus(precipitation, evapotranspiration)
+    else:
+        evapotranspiration = arcpy.sa.Con(flow_directions, '0', '', 'Value IS NOT NULL')
+        overland_flow = precipitation - evapotranspiration
+    overland_flow_m = overland_flow * 0.001
+    # Calculating flow accumulation
+    flow_accumulation = arcpy.sa.FlowAccumulation(flow_directions, overland_flow_m)
+    if out_flow_acc and out_flow_acc != "#":
+        arcpy.AddMessage('Saving flow accumulation')
+        flow_accumulation.save(out_flow_acc)
+    else:
+        flow_accumulation.save('FlowAcc')
+    # Calculating CEI itself
+    cei = flow_accumulation * cell_area * slope_tangent
+    cei.save('cei')
+
+    # Calculating mean erosion cut
+    # Compute 'usual' fow accumulation
+    flow_accumulation_simple = arcpy.sa.FlowAccumulation(flow_directions)
+    flow_accumulation_simple.save('flow_accumulation_simple')
+    # Compute flow accumulation, but weights are elevation
+    flow_accumulation_elev_weighted = arcpy.sa.FlowAccumulation(flow_directions, DEM)
+    flow_accumulation_elev_weighted.save('flow_accumulation_elev_weighted')
+    # Divide weighted FAcc by simple FAcc, get mean elevation within point's watershed
+    mean_elevation_at_point = flow_accumulation_elev_weighted / flow_accumulation_simple
+    mean_elevation_at_point.save('mean_elevation_at_point')
+    # Remove temporary rasters
+    arcpy.Delete_management('flow_accumulation_simple')
+    arcpy.Delete_management('flow_accumulation_elev_weighted')
+    # Derive mean erosion cut raster
+    mean_erosion_cut = arcpy.sa.Minus(mean_elevation_at_point, DEM)
+    mean_erosion_cut.save('mean_erosion_cut')
+    arcpy.Delete_management('mean_elevation_at_point')
+
+    # Calculate initiation raster
+    initiation_raster = cei / mean_erosion_cut
+    if out_initiation_raster and out_initiation_raster != "#":
+        arcpy.AddMessage('Saving initiation_raster raster')
+        initiation_raster.save(out_initiation_raster)
+
+    # Reconstructing river network (raster)
+    # Extracting initial cells
+    arcpy.AddMessage('Extracting initial cells')
+    initials = arcpy.sa.Con(initiation_raster, '1', '0', "Value > %s" % (initiation_threshold))
+    # initials.save('Initials')  # DEBUG
+
+    # Reconstructing river network (raster)
+    arcpy.AddMessage('Reconstructing stream network')
+    flow_accumulation_streams = arcpy.sa.FlowAccumulation(flow_directions, initials)
+    flow_accumulation_streams.save('flow_acc_streams')  
+    # Exctacting stream cells
+    arcpy.AddMessage('Extracting stream network')
+    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams, '1', '0', "Value > 0")
+    # Combining stream cells and initials
+    stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
+    # stream_cells.save('stream_cells')  # DEBUG
+    arcpy.Delete_management('flow_acc_streams')
+
+    return stream_cells
+
 def extract_streams_drainage_strahler_order(flow_directions,
                                             initiation_threshold):
     
@@ -224,6 +300,16 @@ def CEI_extraction(DEM_input,
         stream_cells = extract_streams_erosion_cut(flow_directions,
                                                    DEM_input,
                                                    initiation_threshold)
+    elif initiation_function_type == 'CEI_TO_MEAN_EROSION_CUT':
+        stream_cells = extract_streams_cei_to_mean_erosion_cut(flow_directions, 
+                                                               DEM_input,
+                                                               precipitation,
+                                                               evapotranspiration,
+                                                               slope_tangent,
+                                                               cell_area,
+                                                               initiation_threshold,
+                                                               out_flow_acc,
+                                                               out_initiation_raster)
     elif initiation_function_type == 'DRAINAGE_NETWORK_STRAHLER_ORDER':
         stream_cells = extract_streams_drainage_strahler_order(flow_directions,
                                                                initiation_threshold)
