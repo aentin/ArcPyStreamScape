@@ -121,6 +121,7 @@ def extract_streams_erosion_cut(flow_directions,
     return stream_cells
 
 def extract_streams_cei_to_mean_erosion_cut(flow_directions,
+                                            initiation_function_type,
                                             DEM,
                                             precipitation,
                                             evapotranspiration,
@@ -160,21 +161,52 @@ def extract_streams_cei_to_mean_erosion_cut(flow_directions,
     flow_accumulation_elev_weighted = arcpy.sa.FlowAccumulation(flow_directions, DEM)
     flow_accumulation_elev_weighted.save('flow_accumulation_elev_weighted')
     # Divide weighted FAcc by simple FAcc, get mean elevation within point's watershed
-    mean_elevation_at_point = flow_accumulation_elev_weighted / flow_accumulation_simple
+    mean_elevation_at_point = (flow_accumulation_elev_weighted + DEM) / (flow_accumulation_simple + 1)
     mean_elevation_at_point.save('mean_elevation_at_point')
-    # Remove temporary rasters
-    arcpy.Delete_management('flow_accumulation_simple')
-    arcpy.Delete_management('flow_accumulation_elev_weighted')
     # Derive mean erosion cut raster
     mean_erosion_cut = arcpy.sa.Minus(mean_elevation_at_point, DEM)
     mean_erosion_cut.save('mean_erosion_cut')
     arcpy.Delete_management('mean_elevation_at_point')
-
-    # Calculate initiation raster
-    initiation_raster = cei / mean_erosion_cut
-    if out_initiation_raster and out_initiation_raster != "#":
-        arcpy.AddMessage('Saving initiation_raster raster')
-        initiation_raster.save(out_initiation_raster)
+    
+    if initiation_function_type == 'RESILIENCE':
+        # Calculate initiation raster (CEI / mean erosion cut)
+        # Старый индекс тоже не терять
+        initiation_raster = cei / mean_erosion_cut
+        # initiation_raster.save('resilience')  # DEBUG
+        if out_initiation_raster and out_initiation_raster != "#":
+            arcpy.AddMessage('Saving initiation raster')
+            initiation_raster.save(out_initiation_raster)
+        else:
+            initiation_raster.save('initiation_raster')
+    elif initiation_function_type == 'CEI_TO_MEAN_EROSION_CUT':
+        #TODO: CEI пропустить как вес через flow accumulation, поделить на простой flow accumulation
+        # Calculating accumulated CEI
+        flow_acc_cei = arcpy.sa.FlowAccumulation(flow_directions, cei)
+        flow_acc_cei.save('flow_acc_cei')
+        # Calculating mean CEI over basin
+        mean_cei_basin = flow_acc_cei / (flow_accumulation_simple + 1)
+        mean_cei_basin.save('mean_cei_basin')
+        #TODO: Этот результат разделить на врез. Получается сопротивляемость
+        # Divide accumulated CEI by erosion cut (ground resistance)
+        resilience = mean_cei_basin / mean_erosion_cut
+        resilience.save('resilience')   
+        #TODO: Потом взять CEI и разделить на сопротивляемость.
+        # Это и будет новый индекс.
+        initiation_raster = cei / resilience
+        # initiation_raster.save('cei_to_mean_erosion_cut')  # DEBUG
+        if out_initiation_raster and out_initiation_raster != "#":
+            arcpy.AddMessage('Saving initiation raster')
+            initiation_raster.save(out_initiation_raster)
+        else:
+            initiation_raster.save('initiation_raster')
+        arcpy.Delete_management('flow_acc_cei')
+        arcpy.Delete_management('mean_cei_basin')
+        arcpy.Delete_management('resilience')
+    # Remove temporary rasters
+    arcpy.Delete_management('cei')
+    arcpy.Delete_management('flow_accumulation_simple')
+    arcpy.Delete_management('flow_accumulation_elev_weighted')
+    arcpy.Delete_management('mean_erosion_cut')
 
     # Reconstructing river network (raster)
     # Extracting initial cells
@@ -193,6 +225,8 @@ def extract_streams_cei_to_mean_erosion_cut(flow_directions,
     stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
     # stream_cells.save('stream_cells')  # DEBUG
     arcpy.Delete_management('flow_acc_streams')
+
+    if arcpy.Exists('initiation_raster'): arcpy.Delete_management('initiation_raster')
 
     return stream_cells
 
@@ -268,9 +302,9 @@ def CEI_extraction(DEM_input,
     # Calculate slope
     arcpy.AddMessage('Calculating slope')
     slope_percent = arcpy.sa.Slope(DEM_input, "PERCENT_RISE")
+    slope_percent.save('slope_percent')  # Do not delete!
     slope_tangent = arcpy.sa.Times(slope_percent, 0.01)
-    arcpy.Delete_management('slope_percent')
-    # slope_tangent.save('slope')  # left for debugging purposes
+    slope_tangent.save('slope_tangent')  # left for debugging purposes
     
     # DEM Hydro-processing
     # Fill in sinks
@@ -300,8 +334,9 @@ def CEI_extraction(DEM_input,
         stream_cells = extract_streams_erosion_cut(flow_directions,
                                                    DEM_input,
                                                    initiation_threshold)
-    elif initiation_function_type == 'CEI_TO_MEAN_EROSION_CUT':
+    elif initiation_function_type in ('RESILIENCE', 'CEI_TO_MEAN_EROSION_CUT'):
         stream_cells = extract_streams_cei_to_mean_erosion_cut(flow_directions, 
+                                                               initiation_function_type,
                                                                DEM_input,
                                                                precipitation,
                                                                evapotranspiration,
@@ -318,8 +353,9 @@ def CEI_extraction(DEM_input,
         arcpy.AddMessage('Wrong initiation function type')
     
     # Wipe short 1st order cells
-    arcpy.AddMessage('Wipe short 1st order streams')
-    stream_cells = exclude_small_streams(stream_cells, flow_directions, min_segment_length)
+    if min_segment_length and min_segment_length not in ('#', '0'):
+        arcpy.AddMessage('Wipe short 1st order streams')
+        stream_cells = exclude_small_streams(stream_cells, flow_directions, min_segment_length)
 
     # Extract streams
     arcpy.AddMessage('Extract vector streams')
