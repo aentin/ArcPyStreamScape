@@ -62,14 +62,17 @@ def extract_streams_flowacc(flow_directions,
         # Calculating flow accumulation again to reconstuct connected stream network
         arcpy.AddMessage('Reconstructing stream network')
         flow_accumulation_streams = arcpy.sa.FlowAccumulation(flow_directions, initials)
-        flow_accumulation_streams.save('flow_acc_streams')  
+        flow_accumulation_streams.save('flow_acc_streams')
+        flow_accumulation_streams_corrected = flow_accumulation_streams + initials
+        flow_accumulation_streams_corrected.save('flow_acc_streams_corrected')
         # Exctacting stream cells
         arcpy.AddMessage('Extracting stream network')
-        stream_cells0 = arcpy.sa.Con(flow_accumulation_streams, '1', '0', "Value > 0")
+        stream_cells0 = arcpy.sa.Con(flow_accumulation_streams_corrected, '1', '0', "Value > 0")
         # Combining stream cells and initials
         stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
         # stream_cells.save('stream_cells')  # DEBUG
         arcpy.Delete_management('flow_acc_streams')
+        arcpy.Delete_management('flow_acc_streams_corrected')
     
     # Delete temporary rasters
     if out_flow_acc and out_flow_acc != "#":
@@ -91,7 +94,7 @@ def extract_streams_erosion_cut(flow_directions,
     flow_accumulation_elev_weighted = arcpy.sa.FlowAccumulation(flow_directions, DEM)
     flow_accumulation_elev_weighted.save('flow_accumulation_elev_weighted')
     # Divide weighted FAcc by simple FAcc, get mean elevation within point's watershed
-    mean_elevation_at_point = flow_accumulation_elev_weighted / flow_accumulation_simple
+    mean_elevation_at_point = (flow_accumulation_elev_weighted + DEM) / (flow_accumulation_simple + 1)
     mean_elevation_at_point.save('mean_elevation_at_point')
     # Remove temporary rasters
     arcpy.Delete_management('flow_accumulation_simple')
@@ -109,14 +112,17 @@ def extract_streams_erosion_cut(flow_directions,
     # Reconstructing river network (raster)
     arcpy.AddMessage('Reconstructing stream network')
     flow_accumulation_streams = arcpy.sa.FlowAccumulation(flow_directions, initials)
-    flow_accumulation_streams.save('flow_acc_streams')  
+    flow_accumulation_streams.save('flow_acc_streams')
+    flow_accumulation_streams_corrected = flow_accumulation_streams + initials
+    flow_accumulation_streams_corrected.save('flow_acc_streams_corrected')
     # Exctacting stream cells
     arcpy.AddMessage('Extracting stream network')
-    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams, '1', '0', "Value > 0")
+    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams_corrected, '1', '0', "Value > 0")
     # Combining stream cells and initials
     stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
     # stream_cells.save('stream_cells')  # DEBUG
     arcpy.Delete_management('flow_acc_streams')
+    arcpy.Delete_management('flow_acc_streams_corrected')
 
     return stream_cells
 
@@ -184,7 +190,7 @@ def extract_streams_cei_to_mean_erosion_cut(flow_directions,
         flow_acc_cei = arcpy.sa.FlowAccumulation(flow_directions, cei)
         flow_acc_cei.save('flow_acc_cei')
         # Calculating mean CEI over basin
-        mean_cei_basin = flow_acc_cei / (flow_accumulation_simple + 1)
+        mean_cei_basin = (flow_acc_cei + cei) / (flow_accumulation_simple + 1)
         mean_cei_basin.save('mean_cei_basin')
         #TODO: Этот результат разделить на врез. Получается сопротивляемость
         # Divide accumulated CEI by erosion cut (ground resistance)
@@ -217,14 +223,17 @@ def extract_streams_cei_to_mean_erosion_cut(flow_directions,
     # Reconstructing river network (raster)
     arcpy.AddMessage('Reconstructing stream network')
     flow_accumulation_streams = arcpy.sa.FlowAccumulation(flow_directions, initials)
-    flow_accumulation_streams.save('flow_acc_streams')  
+    flow_accumulation_streams.save('flow_acc_streams')
+    flow_accumulation_streams_corrected = flow_accumulation_streams + initials
+    flow_accumulation_streams_corrected.save('flow_acc_streams_corrected')
     # Exctacting stream cells
     arcpy.AddMessage('Extracting stream network')
-    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams, '1', '0', "Value > 0")
+    stream_cells0 = arcpy.sa.Con(flow_accumulation_streams_corrected, '1', '0', "Value > 0")
     # Combining stream cells and initials
     stream_cells = arcpy.sa.BooleanOr(initials, stream_cells0)
     # stream_cells.save('stream_cells')  # DEBUG
     arcpy.Delete_management('flow_acc_streams')
+    arcpy.Delete_management('flow_acc_streams_corrected')
 
     if arcpy.Exists('initiation_raster'): arcpy.Delete_management('initiation_raster')
 
