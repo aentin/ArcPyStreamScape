@@ -29,11 +29,14 @@ def Watershed_extraction(flow_directions,
     for i in values:
         arcpy.AddMessage('Order processing: ' + str(i))
         streams_select = Con(stream_order == i, stream_links, '')  # Select current order (raster)
-        watersheds_raster = Watershed(flow_directions, streams_select)  # Create watershed from streams_select
+        #streams_select.save('streams_select')
+        stream_links_select = StreamLink(streams_select, flow_directions)
+        watersheds_raster = Watershed(flow_directions, stream_links_select)  # Create watershed from streams_select
         watersheds_raster.save('watersheds_i_st_order')  # Save raster watershed
         watersheds_vector = 'Watershed_%s' % (i)  # Set dataset name
         fc_list.append(watersheds_vector)  # Append name to the list
         arcpy.RasterToPolygon_conversion(watersheds_raster, watersheds_vector, "NO_SIMPLIFY")  # Convert raster waterhsed to vector
+        #arcpy.Delete_management('streams_select')
         arcpy.Delete_management('watersheds_i_st_order')  # Delete raster watershed
         field_name = 'Strahler_order' + str(i)  # Create field name for current Strahler order
         field_list.append(field_name)  # Append the name to the field names list
@@ -82,6 +85,17 @@ def Watershed_extraction(flow_directions,
     # arcpy.AddMessage(concatenate_expression)
     # Fill created field
     arcpy.CalculateField_management(watersheds_output, 'watershed_order', concatenate_expression, "PYTHON")
+    
+    # Filosofov order
+    arcpy.AddField_management(watersheds_output, 'Filosofov_order', "SHORT")  # Create new field
+    concatenate_expression = 'max('
+    for i in values:
+        field_name = 'Strahler_order' + str(i) 
+        concatenate_expression = concatenate_expression + 'str(!' +  field_name + '!),'
+    concatenate_expression = concatenate_expression[:-1]  # Trim last symbol (commma)
+    concatenate_expression = concatenate_expression + ')'
+    arcpy.CalculateField_management(watersheds_output, 'Filosofov_order', concatenate_expression, "PYTHON")
+
     # Delete initial Strahler order fields, leave only concatenation result
     arcpy.DeleteField_management(watersheds_output, field_list)
 
