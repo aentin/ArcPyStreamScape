@@ -8,13 +8,15 @@ def Watershed_extraction(flow_directions,
                          rivers_input, 
                          watersheds_output,
                          text_output):
-    # Compute stream order
-    arcpy.AddMessage('Compute stream order')
-    stream_links = StreamLink(rivers_input, flow_directions)
+    
+    # Compute stream links and order
+    arcpy.AddMessage('Compute stream links and order')
+
+
     stream_order = StreamOrder(rivers_input, flow_directions, "STRAHLER")
-    stream_links.save('stream_links')
     stream_order.save('stream_order')  # This is not for debug. 
-    # The stream_order raster is needed to extract unique stream order values
+    # The stream_order raster is needed to extract unique streams
+    # and to compile a list of unique order values
 
     # Extract unique values from stream order raster
     arcpy.BuildRasterAttributeTable_management('stream_order')
@@ -28,16 +30,20 @@ def Watershed_extraction(flow_directions,
     # Iterate Strahler orders
     for i in values:
         arcpy.AddMessage('Order processing: ' + str(i))
-        streams_select = Con(stream_order == i, stream_links, '')  # Select current order (raster)
-        #streams_select.save('streams_select')
+        streams_select = Con(stream_order == i, stream_order, '')  # Select current order (raster)
+        streams_select.save('streams_select_' + str(i))
         stream_links_select = StreamLink(streams_select, flow_directions)
+        stream_links_select.save('stream_links_select_' + str(i))
         watersheds_raster = Watershed(flow_directions, stream_links_select)  # Create watershed from streams_select
-        watersheds_raster.save('watersheds_i_st_order')  # Save raster watershed
+        watersheds_raster.save('watersheds_' + str(i) + '_st_order')  # Save raster watershed
         watersheds_vector = 'Watershed_%s' % (i)  # Set dataset name
         fc_list.append(watersheds_vector)  # Append name to the list
         arcpy.RasterToPolygon_conversion(watersheds_raster, watersheds_vector, "NO_SIMPLIFY")  # Convert raster waterhsed to vector
-        #arcpy.Delete_management('streams_select')
-        arcpy.Delete_management('watersheds_i_st_order')  # Delete raster watershed
+        # Delete raster streams
+        arcpy.Delete_management('streams_select_' + str(i))
+        arcpy.Delete_management('stream_links_select_' + str(i))
+        # Delete raster watersheds
+        arcpy.Delete_management('watersheds_' + str(i) + '_st_order')  
         field_name = 'Strahler_order' + str(i)  # Create field name for current Strahler order
         field_list.append(field_name)  # Append the name to the field names list
         arcpy.AddField_management(watersheds_vector, field_name, "SHORT")  # Add field to store Strahler order
@@ -47,7 +53,7 @@ def Watershed_extraction(flow_directions,
             row.setValue(field_name, i)
             cursor.updateRow(row)
 
-    arcpy.Delete_management('stream_links')
+    # arcpy.Delete_management('stream_links')
     arcpy.Delete_management('stream_order')
 
     # Converting polygons to lines
