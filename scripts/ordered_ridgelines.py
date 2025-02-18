@@ -8,6 +8,7 @@ def Watershed_extraction(flow_directions,
                          rivers_input, 
                          watersheds_output,
                          text_output):
+    
     # Compute stream order
     arcpy.AddMessage('Compute stream order')
     stream_links = StreamLink(rivers_input, flow_directions)
@@ -29,15 +30,16 @@ def Watershed_extraction(flow_directions,
     for i in values:
         arcpy.AddMessage('Order processing: ' + str(i))
         streams_select = Con(stream_order == i, stream_links, '')  # Select current order (raster)
-        #streams_select.save('streams_select')
-        stream_links_select = StreamLink(streams_select, flow_directions)
-        watersheds_raster = Watershed(flow_directions, stream_links_select)  # Create watershed from streams_select
-        watersheds_raster.save('watersheds_i_st_order')  # Save raster watershed
+        streams_select.save('streams_select_' + str(i))
+        watersheds_raster = Watershed(flow_directions, streams_select) # Create watershed from streams_select
+        watersheds_raster.save('watersheds_' + str(i) + '_st_order')  # Save raster watershed
         watersheds_vector = 'Watershed_%s' % (i)  # Set dataset name
         fc_list.append(watersheds_vector)  # Append name to the list
         arcpy.RasterToPolygon_conversion(watersheds_raster, watersheds_vector, "NO_SIMPLIFY")  # Convert raster waterhsed to vector
-        #arcpy.Delete_management('streams_select')
-        arcpy.Delete_management('watersheds_i_st_order')  # Delete raster watershed
+        # Delete raster streams
+        arcpy.Delete_management('streams_select_' + str(i))
+        # Delete raster watershed
+        arcpy.Delete_management('watersheds_' + str(i) + '_st_order')  
         field_name = 'Strahler_order' + str(i)  # Create field name for current Strahler order
         field_list.append(field_name)  # Append the name to the field names list
         arcpy.AddField_management(watersheds_vector, field_name, "SHORT")  # Add field to store Strahler order
